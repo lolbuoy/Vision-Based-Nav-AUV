@@ -7,6 +7,8 @@ from pymavlink import mavutil
 # Imports for attitude
 from pymavlink.quaternion import QuaternionBase
 
+test_depth=1.5
+
 def set_target_depth(depth):
     """ Sets the target depth while in depth-hold mode.
 
@@ -100,19 +102,24 @@ def set_desired_movement(x=0,y=0,z=0,yaw=0,button=0):
     z,
     yaw,
     button)
-# set a depth target
-def do_automation():    
-    set_target_depth(0)
+
+# set a depth target    
+def do_automation(test_depth):
+    # Set the depth target outside the loop to make it constant
+    set_target_depth(test_depth)
+
     time.sleep(10)
     print("going ahead for 5 seconds")
-    #set_target_attitude(0,10,0)
-    #set_rc_channel_pwm(2,1850)
     set_desired_movement(500)
     time.sleep(5)
-    set_rc_channel_pwm(4,2000)
+    set_rc_channel_pwm(4, 2000)
     time.sleep(2)
     set_desired_movement(500)
     time.sleep(5)
+
+    # Reset the depth target to the original value after the automation routine
+    set_target_depth(test_depth)
+
 
 
 # go for a spin
@@ -132,6 +139,9 @@ def do_automation():
 #master.motors_disarmed_wait()
 # Function to send manual control inputs based on keyboard events
 def send_manual_control_inputs():
+    current_depth = 0.0  # Initialize depth to 0.0 meters
+    depth_change = 0.5  # Depth change per key press
+
     while True:
         try:
             if keyboard.is_pressed('w'):
@@ -148,11 +158,23 @@ def send_manual_control_inputs():
                 time.sleep(20)
                 master.arducopter_disarm()
                 master.motors_disarmed_wait()
-            elif keyboard.is_pressed('s'):
-                do_automation()
+            elif keyboard.is_pressed('q'):
+                current_depth -= depth_change
+                set_target_depth(current_depth)
+                print(f"Depth increased to {current_depth} meters")
+                time.sleep(0.5)  # Adjust sleep time as needed
+            elif keyboard.is_pressed('z'):
+                current_depth += depth_change
+                set_target_depth(current_depth)
+                print(f"Depth creased to {current_depth} meters")
+                time.sleep(0.5)  # Adjust sleep time as needed
+           
+            elif keyboard.is_pressed('m'):
+                 do_automation(test_depth)	
 
         except:
             break
+
 
 # Start a thread to continuously check for keyboard events
 keyboard_thread = keyboard.start_recording()
@@ -160,7 +182,9 @@ keyboard_thread = keyboard.start_recording()
 # Start sending manual control inputs
 send_manual_control_inputs()
 
-# Allow some time for manual control
+
+
+# Allow some time for manual control and depth adjustment
 time.sleep(10000)
 
 # Stop the keyboard thread
