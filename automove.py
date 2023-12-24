@@ -1,4 +1,3 @@
-
 import time
 import keyboard
 import math
@@ -101,7 +100,8 @@ def set_desired_movement(x=0,y=0,z=0,yaw=0,button=0):
     y,
     z,
     yaw,
-    button)
+    button
+    )
 
 # set a depth target    
 def do_automation(test_depth):
@@ -116,6 +116,7 @@ def do_automation(test_depth):
     time.sleep(2)
     set_desired_movement(500)
     time.sleep(5)
+    print("Automation Complete")
 
     # Reset the depth target to the original value after the automation routine
     set_target_depth(test_depth)
@@ -161,12 +162,12 @@ def send_manual_control_inputs():
             elif keyboard.is_pressed('q'):
                 current_depth -= depth_change
                 set_target_depth(current_depth)
-                print(f"Depth increased to {current_depth} meters")
+                print(f"Depth decreased to {current_depth} meters")
                 time.sleep(0.5)  # Adjust sleep time as needed
             elif keyboard.is_pressed('z'):
                 current_depth += depth_change
                 set_target_depth(current_depth)
-                print(f"Depth creased to {current_depth} meters")
+                print(f"Depth increased to {current_depth} meters")
                 time.sleep(0.5)  # Adjust sleep time as needed
            
             elif keyboard.is_pressed('m'):
