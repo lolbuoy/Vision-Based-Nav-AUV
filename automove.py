@@ -1,4 +1,3 @@
-
 import time
 import keyboard
 import math
@@ -7,7 +6,7 @@ from pymavlink import mavutil
 # Imports for attitude
 from pymavlink.quaternion import QuaternionBase
 
-test_depth=1.5
+test_depth=-2.5
 
 def set_target_depth(depth):
     """ Sets the target depth while in depth-hold mode.
@@ -101,27 +100,56 @@ def set_desired_movement(x=0,y=0,z=0,yaw=0,button=0):
     y,
     z,
     yaw,
-    button)
+    button
+    )
 
-# set a depth target    
+# set a test_depth(here it's -2.5 m) change it if required  
 def do_automation(test_depth):
-    # Set the depth target outside the loop to make it constant
+    
     set_target_depth(test_depth)
 
-    time.sleep(10)
-    print("going ahead for 5 seconds")
-    set_desired_movement(500)
-    time.sleep(5)
-    set_rc_channel_pwm(4, 2000)
-    time.sleep(2)
-    set_desired_movement(500)
-    time.sleep(5)
+    try:
+        print("Moving forward for 5 seconds while maintaining depth...")
+        start_time = time.time()
+        while time.time() - start_time < 5:
+            set_desired_movement(x=500)
+            set_target_depth(test_depth)  # Ensuring continuous depth hold
+            time.sleep(0.1)
 
-    # Reset the depth target to the original value after the automation routine
-    set_target_depth(test_depth)
+        print("Yawing 180 degrees while maintaining depth...")
+        yaw_start_time = time.time()
+        while time.time() - yaw_start_time < 2:  # Assuming yaw takes 2 seconds
+            set_rc_channel_pwm(4, 2000)  # Assuming channel 4 controls yaw
+            set_target_depth(test_depth)  # Ensuring continuous depth hold
+            time.sleep(0.1)
+
+        print("Moving forward for another 5 seconds while maintaining depth...")
+        start_time = time.time()
+        while time.time() - start_time < 5:
+            set_desired_movement(x=500)
+            set_target_depth(test_depth)  # Ensuring continuous depth hold
+            time.sleep(0.1)
+
+    finally:
+        # Gradually to reduce movement and to attain stabilization
+        for _ in range(40):  #Iterations can be increased for smoother automation
+            set_desired_movement(x=25)  # Gradually reducing forward movement
+            set_target_depth(test_depth)  # Ensuring continuous depth hold
+            time.sleep(0.1)
+
+        
+        set_desired_movement(x=0)
+        for _ in range(40):  # Gradually reduce depth change after stopping the movement
+            set_target_depth(test_depth)
+            time.sleep(0.1)
+
+        # Reset the depth target to the original value after the automation routine
+        set_target_depth(test_depth)
+        time.sleep(2)  # Ensure depth stabilization after the movement
 
 
 
+        	
 # go for a spin
 # (set target yaw from 0 to 500 degrees in steps of 10, one update per second)
 #roll_angle = pitch_angle = 0
@@ -161,12 +189,12 @@ def send_manual_control_inputs():
             elif keyboard.is_pressed('q'):
                 current_depth -= depth_change
                 set_target_depth(current_depth)
-                print(f"Depth increased to {current_depth} meters")
+                print(f"Depth decreased to {current_depth} meters")
                 time.sleep(0.5)  # Adjust sleep time as needed
             elif keyboard.is_pressed('z'):
                 current_depth += depth_change
                 set_target_depth(current_depth)
-                print(f"Depth creased to {current_depth} meters")
+                print(f"Depth increased to {current_depth} meters")
                 time.sleep(0.5)  # Adjust sleep time as needed
            
             elif keyboard.is_pressed('m'):
