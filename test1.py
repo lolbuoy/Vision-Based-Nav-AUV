@@ -48,40 +48,46 @@ def set_target_depth(depth):
 def do_automation(test_depth):
     set_target_depth(test_depth)
     i = 0
+
     if switch_state != "OFF" and i == 0:
+        # Arm the vehicle and wait for motors to be armed
         master.arducopter_arm()
         master.motors_armed_wait()
-        print("armed")   
-        print("Moving forward for 5 seconds while maintaining depth...")
+        print("Armed")
+        print("Moving ahead for 5 Seconds")
+        # Move forward for 5 seconds while maintaining depth
         start_time = time.time()
-        if time.time() - start_time < 5 or switch_state != "OFF":
+        while time.time() - start_time < 5 and switch_state != "OFF":
             set_desired_movement(x=500)
             set_target_depth(test_depth)
-            time.sleep(5)
+            time.sleep(0.1)  # Adjust sleep duration as needed
 
-        print("Yawing 180 degrees while maintaining depth...")
+        # Yaw 180 degrees while maintaining depth
+        print("Yawing 180")
         yaw_start_time = time.time()
-        if time.time() - yaw_start_time < 2 or switch_state != "OFF":
-            set_rc_channel_pwm(4, 2000)
+        while time.time() - yaw_start_time < 2 and switch_state != "OFF":
+            set_rc_channel_pwm(4, 2000)  # Adjust as needed for your setup
             set_target_depth(test_depth)
-            time.sleep(2)
-
-        print("Moving forward for another 5 seconds while maintaining depth...")
+            time.sleep(0.1)  # Adjust sleep duration as needed
+            
+        print("Moving ahead for 5 Seconds")
+        # Move forward for another 5 seconds while maintaining depth
         start_time = time.time()
-        if (time.time() - start_time < 5 or switch_state != "OFF"):
-            print("srta",start_time)
-            print(time.time())
-            print("sub",start_time-time.time())
+        while time.time() - start_time < 5 and switch_state != "OFF":
             set_desired_movement(x=300)
             set_target_depth(test_depth)
-            time.sleep(5)
-            print("imdone")
-            #set_desired_movement(x=0)
-            i=+1
-        for _ in range(40):
-            set_target_depth(test_depth)
-            time.sleep(0.1)
-        i+=1        
+            time.sleep(0.1)  # Adjust sleep duration as needed
+
+        # Stop the movement after 5 seconds
+        set_desired_movement(x=0)
+        print("Stopped movement")
+        i += 1
+
+    # Additional loop to maintain depth for 4 seconds after the main actions
+    for _ in range(40):
+        set_target_depth(test_depth)
+        time.sleep(0.1)
+    i += 1
 
 
 
@@ -99,7 +105,7 @@ def switch_turned_off():
 def switch_in_center():
     print("Switch in the center position.")
 
-master = mavutil.mavlink_connection('udpin:192.168.1.111:6900')
+master = mavutil.mavlink_connection('localhost:6900')
 boot_time = time.time()
 # Wait a heartbeat before sending commands
 master.wait_heartbeat()
