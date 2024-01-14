@@ -6,7 +6,7 @@ try:
     with open('/home/tanu/Desktop/yolov8/me/new1/log.txt', 'a') as log_file:
         log_file.write("Starting object detection process...\n")
 
-        results = model.predict(source=4, project='/home/tanu/Desktop/yolov8/me/new1', name='test1', exist_ok=True, save_crop=True,stream=True)
+        results = model.predict(source='/home/tanu/Desktop/yolov8/camera', project='/home/tanu/Desktop/yolov8/me/new', name='test1', exist_ok=True, save_crop=True,stream=True)
 
         for i, result in enumerate(results):
             log_file.write(f"Processing result {i}\n")
@@ -19,7 +19,7 @@ try:
                 center_y = (coords[1] + coords[3]) / 2
 
                 # Log coordinates to the log file
-                log_file.write(f"Object type: {class_name}, Center_X: {center_x}, Center_Y: {center_y}\n")
+                log_file.write(f"Object type: {class_name}, Center_X: {center_x}, Center_Y: {center_y}, Coordinates: {coords},\n")
 
 except Exception as e:
     print(f"Error occurred: {e}")
