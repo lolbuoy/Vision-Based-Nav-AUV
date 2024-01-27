@@ -1,222 +1,209 @@
-import time
-import keyboard
-import math
+#!/usr/bin/env python
 
-from pymavlink import mavutil
+import rospy
+from std_msgs.msg import Float32
 
-from pymavlink.quaternion import QuaternionBase
+class AUVRepositioning:
+    def __init__(self):
+        rospy.init_node('auv_repositioning', anonymous=True)
+        print("AUV Repositioning node initialized")  # Added print statement
 
-test_depth=-2.5
+        # Set up the subscriber for the depth information
+        self.depth_sub = rospy.Subscriber('/custom_node/z_pixel', Float32, self.depth_callback)
 
-def set_target_depth(depth):
-    """ Sets the target depth while in depth-hold mode.
-
-    Uses https://mavlink.io/en/messages/common.html#SET_POSITION_TARGET_GLOBAL_INT
-
-    'depth' is technically an altitude, so set as negative meters below the surface
-        -> set_target_depth(-1.5) # sets target to 1.5m below the water surface.
-
-    """
-    master.mav.set_position_target_global_int_send(
-        int(1e3 * (time.time() - boot_time)), # ms since boot
-        master.target_system, master.target_component,
-        coordinate_frame=mavutil.mavlink.MAV_FRAME_GLOBAL_INT,
-        type_mask=( # ignore everything except z position
-            mavutil.mavlink.POSITION_TARGET_TYPEMASK_X_IGNORE |
-            mavutil.mavlink.POSITION_TARGET_TYPEMASK_Y_IGNORE |
-            # DON'T mavutil.mavlink.POSITION_TARGET_TYPEMASK_Z_IGNORE |
-            mavutil.mavlink.POSITION_TARGET_TYPEMASK_VX_IGNORE |
-            mavutil.mavlink.POSITION_TARGET_TYPEMASK_VY_IGNORE |
-            mavutil.mavlink.POSITION_TARGET_TYPEMASK_VZ_IGNORE |
-            mavutil.mavlink.POSITION_TARGET_TYPEMASK_AX_IGNORE |
-            mavutil.mavlink.POSITION_TARGET_TYPEMASK_AY_IGNORE |
-            mavutil.mavlink.POSITION_TARGET_TYPEMASK_AZ_IGNORE |
-            # DON'T mavutil.mavlink.POSITION_TARGET_TYPEMASK_FORCE_SET |
-            mavutil.mavlink.POSITION_TARGET_TYPEMASK_YAW_IGNORE |
-            mavutil.mavlink.POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE
-        ), lat_int=0, lon_int=0, alt=depth, # (x, y WGS84 frame pos - not used), z [m]
-        vx=0, vy=0, vz=0.5, # velocities in NED frame [m/s] (not used)
-        afx=0, afy=0, afz=0, yaw=0, yaw_rate=0
-        # accelerations in NED frame [N], yaw, yaw_rate
-        #  (all not supported yet, ignored in GCS Mavlink)
-    )
-def set_rc_channel_pwm(channel_id, pwm=1500):
-    """ Set RC channel pwm value
-    Args:
-        channel_id (TYPE): Channel ID
-        pwm (int, optional): Channel pwm value 1100-1900
-    """
-    if channel_id < 1 or channel_id > 18:
-        print("Channel does not exist.")
-        return
-
-    # Mavlink 2 supports up to 18 channels:
-    # https://mavlink.io/en/messages/common.html#RC_CHANNELS_OVERRIDE
-    rc_channel_values = [65535 for _ in range(18)]
-    rc_channel_values[channel_id - 1] = pwm
-    master.mav.rc_channels_override_send(
-        master.target_system,                # target_system
-        master.target_component,             # target_component
-        *rc_channel_values)                  # RC channel list, in microseconds.
-
-
-
-def set_target_attitude(roll, pitch, yaw):
-    """ Sets the target attitude while in depth-hold mode.
-
-    'roll', 'pitch', and 'yaw' are angles in degrees.
-
-    """
-    master.mav.set_attitude_target_send(
-        int(1e3 * (time.time() - boot_time)), # ms since boot
-        master.target_system, master.target_component,
-        # allow throttle to be controlled by depth_hold mode
-        mavutil.mavlink.ATTITUDE_TARGET_TYPEMASK_THROTTLE_IGNORE,
-        # -> attitude quaternion (w, x, y, z | zero-rotation is 1, 0, 0, 0)
-        QuaternionBase([math.radians(angle) for angle in (roll, pitch, yaw)]),
-        0, 0, 0, 0 # roll rate, pitch rate, yaw rate, thrust
-    )
-
-# Create the connection
-master = mavutil.mavlink_connection('tcp:0.0.0.0:5763')
-boot_time = time.time()
-# Wait a heartbeat before sending commands
-master.wait_heartbeat()
-print("heartbeat")
-
-# arm ArduSub autopilot and wait until confirmed
-master.arducopter_arm()
-master.motors_armed_wait()
-print("armed")
-# set the desired operating mode
-DEPTH_HOLD = 'ALT_HOLD'
-DEPTH_HOLD_MODE = master.mode_mapping()[DEPTH_HOLD]
-while not master.wait_heartbeat().custom_mode == DEPTH_HOLD_MODE:
-    master.set_mode(DEPTH_HOLD)
-def set_desired_movement(x=0,y=0,z=0,yaw=0,button=0):
-    master.mav.manual_control_send(
-    master.target_system,
-    x,
-    y,
-    z,
-    yaw,
-    button
-    )
-
-# set a test_depth(here it's -2.5 m) change it if required  
-def do_automation(test_depth):
-    
-    set_target_depth(test_depth)
-
-    try:
-        print("Moving forward for 5 seconds while maintaining depth...")
-        start_time = time.time()
-        while time.time() - start_time < 5:
-            set_desired_movement(x=500)
-            set_target_depth(test_depth)  # Ensuring continuous depth hold
-            time.sleep(0.1)
-
-        print("Yawing 180 degrees while maintaining depth...")
-        yaw_start_time = time.time()
-        while time.time() - yaw_start_time < 2:  # Assuming yaw takes 2 seconds
-            set_rc_channel_pwm(4, 2000)  # Assuming channel 4 controls yaw
-            set_target_depth(test_depth)  # Ensuring continuous depth hold
-            time.sleep(0.1)
-
-        print("Moving forward for another 5 seconds while maintaining depth...")
-        start_time = time.time()
-        while time.time() - start_time < 5:
-            set_desired_movement(x=500)
-            set_target_depth(test_depth)  # Ensuring continuous depth hold
-            time.sleep(0.1)
-
-    finally:
-        # Gradually to reduce movement and to attain stabilization
-        for _ in range(40):  #Iterations can be increased for smoother automation
-            set_desired_movement(x=25)  # Gradually reducing forward movement
-            set_target_depth(test_depth)  # Ensuring continuous depth hold
-            time.sleep(0.1)
-
+        # Define the maximum depth (altitude) limit
+        self.max_depth_limit = 8.0  # Set the limit to 2 meters
         
-        set_desired_movement(x=0)
-        for _ in range(40):  # Gradually reduce depth change after stopping the movement
-            set_target_depth(test_depth)
-            time.sleep(0.1)
+        # Flag to control the movement
+        self.is_moving = True
 
-        # Reset the depth target to the original value after the automation routine
-        set_target_depth(test_depth)
-        time.sleep(2)  # Ensure depth stabilization after the movement
-
-
-
-        	
-# go for a spin
-# (set target yaw from 0 to 500 degrees in steps of 10, one update per second)
-#roll_angle = pitch_angle = 0
-#for yaw_angle in range(0, 500, 10):
-#    set_target_attitude(roll_angle, pitch_angle, yaw_angle)
-#    time.sleep(1) # wait for a second
-
-# spin the other way with 3x larger steps
-#for yaw_angle in range(500, 0, -30):
-#    set_target_attitude(roll_angle, pitch_angle, yaw_angle)
-#    time.sleep(1)
-
-# clean up (disarm) at the end
-#master.arducopter_disarm()
-#master.motors_disarmed_wait()
-# Function to send manual control inputs based on keyboard events
-def send_manual_control_inputs():
-    current_depth = 0.0  # Initialize depth to 0.0 meters
-    depth_change = 0.5  # Depth change per key press
-
-    while True:
+    def depth_callback(self, depth_msg):
         try:
-            if keyboard.is_pressed('w'):
-                master.mav.manual_control_send(master.target_system, 0, -500, 500, 0, 0)
-            elif keyboard.is_pressed('a'):
-                master.mav.manual_control_send(master.target_system, -500, 0, 500, 0, 0)
-            elif keyboard.is_pressed('s'):
-                master.mav.manual_control_send(master.target_system, 0, 500, 500, 0, 0)
-            elif keyboard.is_pressed('d'):
-                master.mav.manual_control_send(master.target_system, 500, 0, 500, 0, 0)
-            elif keyboard.is_pressed('k'):
-                master.mav.manual_control_send(master.target_system, 0, 0, 0, 0, 0)
-                set_target_depth(1000)
-                time.sleep(20)
-                master.arducopter_disarm()
-                master.motors_disarmed_wait()
-            elif keyboard.is_pressed('q'):
-                current_depth -= depth_change
-                set_target_depth(current_depth)
-                print(f"Depth decreased to {current_depth} meters")
-                time.sleep(0.5)  # Adjust sleep time as needed
-            elif keyboard.is_pressed('z'):
-                current_depth += depth_change
-                set_target_depth(current_depth)
-                print(f"Depth increased to {current_depth} meters")
-                time.sleep(0.5)  # Adjust sleep time as needed
-           
-            elif keyboard.is_pressed('m'):
-                 do_automation(test_depth)	
+            # Get the depth value from the message
+            depth = depth_msg.data
 
-        except:
-            break
+            # Print the depth value for reference
+            rospy.loginfo(f"Received depth value: {depth}")
+
+            # Check if the received depth value is zero
+            if depth == 0:
+                rospy.loginfo("Depth value is zero. Stopping movement.")
+                self.is_moving = False  # Stop the movement
+            else:
+                # If the depth value is non-zero, resume the movement
+                if not self.is_moving:
+                    rospy.loginfo("Depth value is non-zero. Resuming movement.")
+                    self.is_moving = True
+
+                # Assuming you have a simple mapping from depth to desired altitude (z-coordinate)
+                # You might need a more sophisticated mapping based on your AUV's dynamics
+                desired_altitude = depth
+
+                # Calculate the desired position based on maximum offsets
+                y_offset = max(min(desired_altitude, y_distance_to_forward), y_distance_to_backward)
+
+                # Determine the direction to move the AUV (forward or backward)
+                y_direction = "forward" if y_offset >= 0 else "backward"
+
+                # Print the information or use it to control the AUV
+                rospy.loginfo(f"Move the AUV {abs(y_offset):.2f} meters {y_direction} in the y-axis direction")
+                rospy.loginfo(f"Updated Depth: {depth:.3f} meters")
+
+                # Check if the desired altitude exceeds the maximum depth limit
+                if desired_altitude >= self.max_depth_limit:
+                    rospy.loginfo("Maximum depth limit reached. Stopping movement.")
+                    # You might add additional logic here to halt the AUV's movement
+
+        except Exception as e:
+            rospy.logerr(f"Error processing depth information: {e}")
+
+# Define the maximum offsets for the y-axis
+y_distance_to_forward = 64.0
+y_distance_to_backward = -62.6
+
+if __name__ == "__main__":
+    try:
+        auv_repositioning = AUVRepositioning()
+        rospy.spin()  # Start ROS node
+
+    except rospy.ROSInterruptException:
+        pass
 
 
-# Start a thread to continuously check for keyboard events
-keyboard_thread = keyboard.start_recording()
+'''import rospy
+from std_msgs.msg import Float32
 
-# Start sending manual control inputs
-send_manual_control_inputs()
+class AUVRepositioning:
+    def __init__(self):
+        rospy.init_node('auv_repositioning', anonymous=True)
+        print("AUV Repositioning node initialized")  # Added print statement
+
+        # Set up the subscriber for the depth information
+        self.depth_sub = rospy.Subscriber('/custom_node/z_pixel', Float32, self.depth_callback)
+
+        # Define the maximum depth (altitude) limit
+        self.max_depth_limit = 4.0  # Set the limit to 2 meters
+
+    def depth_callback(self, depth_msg):
+        try:
+            # Get the depth value from the message
+            depth = depth_msg.data
+
+            # Assuming you have a simple mapping from depth to desired altitude (z-coordinate)
+            # You might need a more sophisticated mapping based on your AUV's dynamics
+            desired_altitude = depth
+
+            # Calculate the desired position based on maximum offsets
+            y_offset = max(min(desired_altitude, y_distance_to_forward), y_distance_to_backward)
+
+            # Determine the direction to move the AUV (forward or backward)
+            y_direction = "forward" if y_offset >= 0 else "backward"
+
+            # Print the information or use it to control the AUV
+            rospy.loginfo(f"Move the AUV {abs(y_offset):.2f} meters {y_direction} in the y-axis direction")
+            rospy.loginfo(f"Updated Depth: {depth:.3f} meters")
+
+            # Check if the desired altitude exceeds the maximum depth limit
+            if desired_altitude >= self.max_depth_limit:
+                rospy.loginfo("Maximum depth limit reached. Stopping movement.")
+                # You might add additional logic here to halt the AUV's movement
+
+            # Introduce a delay to slow down the process
+            rospy.sleep(1)  # 1 second delay
+
+        except Exception as e:
+            rospy.logerr(f"Error processing depth information: {e}")
+
+# Define the maximum offsets for the y-axis
+y_distance_to_forward = 64.0
+y_distance_to_backward = -62.6
+
+if __name__ == "__main__":
+    try:
+        auv_repositioning = AUVRepositioning()
+        rospy.spin()  # Start ROS node
+
+    except rospy.ROSInterruptException:
+        pass
+'''
 
 
 
-# Allow some time for manual control and depth adjustment
-time.sleep(10000)
 
-# Stop the keyboard thread
-keyboard.stop_recording(keyboard_thread)
 
-# Close the connection
-master.close()
+
+
+
+
+'''import rospy
+from std_msgs.msg import Float32
+import random
+
+class AUVRepositioning:
+    def __init__(self):
+        rospy.init_node('auv_repositioning', anonymous=True)
+
+        # Set up the subscriber for the depth information
+        self.depth_sub = rospy.Subscriber('/custom_node/z_pixel', Float32, self.depth_callback)
+
+        # Set up the publisher for random distance_x
+        # self.distance_x_pub = rospy.Publisher('/custom_node/distance_x', Float32, queue_size=10)
+
+        # List to store random values
+        self.random_values_list = []
+
+        # Set up a timer to generate random distance_x values at a rate of 2 Hz
+        rospy.Timer(rospy.Duration(0.5), self.publish_random_distance_x)
+
+    def depth_callback(self, depth_msg):
+        try:
+            # Get the depth value from the message
+            depth = depth_msg.data
+
+            # Assuming you have a simple mapping from depth to desired altitude (z-coordinate)
+            # You might need a more sophisticated mapping based on your AUV's dynamics
+            desired_altitude = depth
+
+            # Map the desired position based on maximum offsets
+            x_offset = max(min(desired_altitude, x_distance_to_left_side), x_distance_to_right_side)
+
+            # Determine the direction to move the camera (left or right)
+            x_direction = "right" if x_offset >= 0 else "left"
+
+            # Print the information
+            print(f"Move the camera {abs(x_offset):.2f} meters {x_direction} in the x-direction")
+            print(f"Updated Distance: {depth:.2f} meters")
+
+        except Exception as e:
+            rospy.logerr(f"Error processing depth information: {e}")
+
+    def publish_random_distance_x(self, event=None):
+        # Generate a random distance_x in the range of 200 to 600
+        random_distance_x = random.uniform(200, 600)
+
+        # Append the random value to the list
+        self.random_values_list.append(random_distance_x)
+        
+        # Publish the random distance_x
+        # self.distance_x_pub.publish(Float32(random_distance_x))
+
+    def get_random_values_list(self):
+        # Method to retrieve the list of random values
+        return self.random_values_list
+
+    def run(self):
+        rospy.spin()
+    
+
+# Define the maximum offsets
+x_distance_to_left_side = 64.0
+x_distance_to_right_side = -62.6
+y_distance_to_top_side = 42.4
+y_distance_to_bottom_side = -35.7
+
+# Define the node name
+node_name = 'auv_repositioning'
+
+auv_repositioning = AUVRepositioning()
+print(f"{node_name} Initialized")
+auv_repositioning.run()'''
