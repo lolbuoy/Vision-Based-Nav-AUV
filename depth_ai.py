@@ -3,10 +3,10 @@ from std_msgs.msg import Float32
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import cv2
-from inf3_center import center_x
+from inf3_center import center_x  # Import center_x from inf3_center module
 
 class DepthCalculator:
-    def __init__(self):
+    def __init__(self, center_x):
         rospy.init_node('depth_calculator', anonymous=True)
 
         # Set up the publisher for the distance
@@ -15,30 +15,27 @@ class DepthCalculator:
         # Set up the RealSense pipeline
         self.bridge = CvBridge()
 
-        # Placeholder for center_x, replace with the actual value or logic
-        self.center_x_value = 320  # Replace with the correct value
+        # Store the center_x value
+        self.center_x = center_x
 
     def depth_image_callback(self, depth_image_msg):
         try:
             # Convert the ROS Image message to a CV2 image
             depth_image = self.bridge.imgmsg_to_cv2(depth_image_msg, desired_encoding="passthrough")
 
-            # Use the center_x value obtained from inf3_center.py for depth calculation
-            center_x_value = self.center_x_value  # Use the stored center_x_value
+            # Get the depth value at the specified center_x
+            depth_at_center_mm = depth_image[depth_image.shape[0] // 2, self.center_x]
 
-            # Extract the depth value at the specified x-coordinate
-            depth_at_x = depth_image[center_x_value, :]
+            # Convert the depth value to meters
+            depth_at_center_m = depth_at_center_mm * 0.001
 
-            # Calculate the average depth along the specified x-coordinate
-            average_depth = depth_at_x.mean() * 0.001  # Convert to meters
+            # Publish the depth at the specified center_x
+            self.distance_pub.publish(Float32(depth_at_center_m))
 
-            # Publish the average depth at the specified x-coordinate
-            self.distance_pub.publish(Float32(average_depth))
-
-            # Display the depth image with the specified x-coordinate highlighted
-            depth_image_with_line = depth_image.copy()
-            cv2.line(depth_image_with_line, (center_x_value, 0), (center_x_value, depth_image.shape[0]), (255, 255, 255), 2)
-            cv2.imshow("Depth Image with Line", cv2.applyColorMap(cv2.convertScaleAbs(depth_image_with_line, alpha=0.03), cv2.COLORMAP_JET))
+            # Display the depth image with the specified center_x highlighted
+            depth_image_with_center = depth_image.copy()
+            cv2.circle(depth_image_with_center, (self.center_x, depth_image.shape[0] // 2), 5, (255, 255, 255), -1)  # Highlight specified center_x
+            cv2.imshow("Depth Image with Specified Center_x", cv2.applyColorMap(cv2.convertScaleAbs(depth_image_with_center, alpha=0.03), cv2.COLORMAP_JET))
             cv2.waitKey(1)
 
         except Exception as e:
@@ -54,6 +51,8 @@ class DepthCalculator:
         cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-    depth_calculator = DepthCalculator()
+    # Use the center_x value from inf3_center module
+    from inf3_center import center_x
+    depth_calculator = DepthCalculator(center_x)
     print("Depth Calculator Node Initialized")
     depth_calculator.run()
