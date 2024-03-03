@@ -1,16 +1,20 @@
 import rospy
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, UInt16
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 from ultralytics import YOLO
 import csv
+import os
+import datetime
 
 class DepthCalculator:
     def __init__(self):
         rospy.init_node('depth_calculator', anonymous=True)
 
-        # Set up the publisher for the distance
+        # Set up the publisher for the distance and pixel coordinates
         self.distance_pub = rospy.Publisher('/custom_node/distance', Float32, queue_size=10)
+        self.pixel_x_pub = rospy.Publisher('/custom_node/pixel_x', UInt16, queue_size=10)
+        self.pixel_y_pub = rospy.Publisher('/custom_node/pixel_y', UInt16, queue_size=10)
 
         # Set up the RealSense pipeline
         self.bridge = CvBridge()
@@ -18,33 +22,35 @@ class DepthCalculator:
         # Initialize YOLO model
         self.model = YOLO("/home/jetson/ai/ultralytics/best.pt")
 
-        # Create a CSV file to log data
-        self.csv_file_path = '/home/jetson/ai/depth_data.csv'
+        # Create a new CSV file for logging data
+        self.csv_file_path = self.get_unique_csv_filename()
         self.csv_file = open(self.csv_file_path, 'w')
         self.csv_writer = csv.writer(self.csv_file)
         self.csv_writer.writerow(['Object Type', 'Center_X', 'Center_Y', 'Distance'])
+
+    def get_unique_csv_filename(self):
+        # Generate a unique filename based on the current timestamp
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"depth_data_{timestamp}.csv"
+        return filename
 
     def depth_image_callback(self, depth_image_msg):
         try:
             # Convert the ROS Image message to a CV2 image
             depth_image = self.bridge.imgmsg_to_cv2(depth_image_msg, desired_encoding="passthrough")
 
-            # Define a square region around the center of the image
+            # Calculate the center pixel coordinates
             center_x, center_y = depth_image.shape[1] // 2, depth_image.shape[0] // 2
-            square_size = 100  # Adjust this value based on the size of the square you want
-            top_left_x = center_x - square_size // 2
-            top_left_y = center_y - square_size // 2
-            bottom_right_x = center_x + square_size // 2
-            bottom_right_y = center_y + square_size // 2
 
-            # Extract the depth values within the square region
-            depth_square = depth_image[top_left_y:bottom_right_y, top_left_x:bottom_right_x]
+            # Publish the pixel coordinates of the center
+            self.pixel_x_pub.publish(UInt16(center_x))
+            self.pixel_y_pub.publish(UInt16(center_y))
 
-            # Calculate the average depth within the square
-            average_depth = depth_square.mean() * 0.001  # Convert to meters
+            # Extract the depth value at the center pixel
+            depth_at_center = depth_image[center_y, center_x] * 0.001  # Convert to meters
 
-            # Publish the average depth within the square
-            self.distance_pub.publish(Float32(average_depth))
+            # Publish the depth value at the center
+            self.distance_pub.publish(Float32(depth_at_center))
 
             # Perform object detection
             results = self.model.predict(source='/home/jetson/Desktop/yolov8/camera', project='/home/jetson/Desktop/yolov8/new1', name='test1', exist_ok=True, save_crop=True, stream=True)
@@ -58,7 +64,7 @@ class DepthCalculator:
                     center_y = (coords[1] + coords[3]) / 2
 
                     # Log coordinates and distance to CSV file
-                    self.csv_writer.writerow([class_name, center_x, center_y, average_depth])
+                    self.csv_writer.writerow([class_name, center_x, center_y, depth_at_center])
 
                     # Log coordinates to the console
                     rospy.loginfo(f"Object type: {class_name}, Center_X: {center_x}, Center_Y: {center_y}")
