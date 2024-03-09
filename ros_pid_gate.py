@@ -8,7 +8,7 @@ from pymavlink.quaternion import QuaternionBase
 import os
 import csv
 import time
-import csvreader
+#import csvreader
 import random
 class PIDController:
     def __init__(self, Kp_roll, Ki_roll, Kd_roll,Kp_pitch,Ki_pitch,Kd_pitch,setpoint_roll,setpoint_pitch, sample_time):
