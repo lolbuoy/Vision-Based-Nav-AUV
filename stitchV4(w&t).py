@@ -1,4 +1,5 @@
-'''ADVANCED STITCHING OF IMAGES FROM 2 FOLDERS WITH WATCHDOG WITH DUPLICATE AVOIDANCE'''
+'''ADVANCED STITCHING OF IMAGES FROM 
+2 FOLDERS WITH WATCHDOG WITH DUPLICATE AVOIDANCE'''
 
 import os
 import cv2
@@ -6,6 +7,7 @@ import numpy as np
 import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+import subprocess
 
 class ImageStitcher:
     def __init__(self, input_folder1, input_folder2, output_folder):
@@ -35,30 +37,31 @@ class ImageStitcher:
                 image1 = cv2.imread(os.path.join(self.input_folder1, file1))
                 image2 = cv2.imread(os.path.join(self.input_folder2, file2))
 
+                if image1 is None or image2 is None:
+                    print("Error: Unable to read one or both images.")
+                    continue
+
                 # Resize images to target size
                 image1 = cv2.resize(image1, (640, 480))  # Assuming aspect ratio is maintained
                 image2 = cv2.resize(image2, (640, 480))
+		
+                stitcher = cv2.Stitcher_create()
+                status, stitched_image = stitcher.stitch([image1, image2])
 
-                # Find keypoints and descriptors
-                kp1, des1 = self.orb.detectAndCompute(image1, None)
-                kp2, des2 = self.orb.detectAndCompute(image2, None)
+                if status != cv2.Stitcher_OK:
+                    print("Error: Stitching failed.")
+                    continue
 
-                # Match descriptors
-                matches = self.matcher.match(des1, des2)
+                # Resize concatenated image to target size
+                stitched_image = cv2.resize(stitched_image, (1200, 480))
 
-                # Sort matches by score
-                matches = sorted(matches, key=lambda x: x.distance)
-
-                # Draw top matches
-                matched_img = cv2.drawMatches(image1, kp1, image2, kp2, matches[:10], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-
-                # Save matched image if not saved before
-                output_filename = f"{timestamp1}_{timestamp2}_matched.jpg"
-                if output_filename not in self.processed_pairs:
-                    cv2.imwrite(os.path.join(self.output_folder, output_filename), matched_img)
-                    print(f"Matched and saved: {output_filename}")
-                    # Add the processed pair to the set
-                    self.processed_pairs.add((file1, file2))
+                # Save stitched image
+                output_filename = f"{timestamp1}_{timestamp2}_stitched.jpg"
+                cv2.imwrite(os.path.join(self.output_folder, output_filename), stitched_image)
+                print(f"Stitched and saved: {output_filename}")
+                
+                # Add the processed pair to the set
+                self.processed_pairs.add((file1, file2))
 
 class Watcher:
     def __init__(self, image_stitcher):
@@ -87,11 +90,14 @@ class Handler(FileSystemEventHandler):
         print(f"Detected new file: {event.src_path}")
         self.image_stitcher.stitch_images()
 
+# Call the bash script to clear the stitch folder
+output_folder = "/home/vyana/Desktop/yolov8/stitch"
+subprocess.call(['./singleclear.sh', output_folder])
+
 # Example usage
 if __name__ == "__main__":
-    input_folder1 = "I1"
-    input_folder2 = "I2"
-    output_folder = "stitch"
+    input_folder1 = "/home/vyana/Desktop/yolov8/camera3"
+    input_folder2 = "/home/vyana/Desktop/yolov8/camera4"
 
     image_stitcher = ImageStitcher(input_folder1, input_folder2, output_folder)
     watcher = Watcher(image_stitcher)
